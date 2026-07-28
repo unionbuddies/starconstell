@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Oort Cloud & Kuiper Belt Explorer</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0c3348;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#e8f2f8}
+    /* Explicit 100% is required: canvas is a replaced element, so inset:0 alone
+       leaves width:auto resolving to the intrinsic (attribute) size. */
+    #canvas{display:block;position:fixed;inset:0;width:100%;height:100%}
+
+    #loading{position:fixed;inset:0;background:#0c3348;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;z-index:999;transition:opacity .6s}
+    #loading h2{font-size:22px;font-weight:400;color:#9fc4da;letter-spacing:3px;text-transform:uppercase}
+    #loading p{font-size:14px;color:#5b8ba6;margin-top:10px}
+
+    /* ── Top bar ─────────────────────────────────────────────── */
+    #topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:flex-start;
+      justify-content:space-between;gap:18px;padding:18px 22px;flex-wrap:wrap;pointer-events:none}
+    #title-bar h1{font-size:clamp(17px,2vw,24px);font-weight:600;color:#ffffff;letter-spacing:2px;
+      text-transform:uppercase;text-shadow:0 2px 12px rgba(0,0,0,.5)}
+    #title-bar p{font-size:13px;color:#8fb8d0;margin-top:4px;letter-spacing:.4px}
+
+    /* ── Big mode switch: the two structures, kept separate ──── */
+    #modes{display:flex;gap:10px;pointer-events:auto}
+    .mode-btn{background:rgba(10,50,72,.85);border:2px solid rgba(150,195,220,.35);
+      color:#bcd9e9;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:600;
+      letter-spacing:1.2px;text-transform:uppercase;cursor:pointer;font-family:inherit;
+      transition:all .2s;backdrop-filter:blur(6px)}
+    .mode-btn:hover{background:rgba(20,75,105,.9);color:#ffffff;border-color:rgba(180,220,245,.6)}
+    .mode-btn.active{background:#e8f2f8;color:#0d3346;border-color:#ffffff;
+      box-shadow:0 4px 18px rgba(200,230,250,.3)}
+
+    #region-label{margin-top:10px;font-size:13px;color:#a8cde2;letter-spacing:1px;
+      display:inline-block;background:rgba(9,45,66,.8);border:1px solid rgba(150,195,220,.3);
+      border-radius:20px;padding:6px 14px;font-weight:500}
+
+    #tooltip{position:fixed;background:rgba(9,45,66,.95);border:1px solid rgba(160,205,230,.5);
+      border-radius:8px;padding:8px 14px;font-size:14px;font-weight:600;color:#ffffff;
+      pointer-events:none;display:none;z-index:300;backdrop-filter:blur(4px);
+      box-shadow:0 4px 16px rgba(0,0,0,.4)}
+
+    /* ── Info panel ──────────────────────────────────────────── */
+    #info-panel{position:fixed;right:22px;top:50%;transform:translateY(-50%);
+      width:370px;max-height:82vh;overflow-y:auto;background:rgba(9,42,61,.96);
+      border:1px solid rgba(150,195,220,.3);border-radius:16px;padding:26px;display:none;z-index:100;
+      backdrop-filter:blur(12px);box-shadow:0 10px 50px rgba(0,0,0,.5)}
+    #info-panel::-webkit-scrollbar{width:7px}
+    #info-panel::-webkit-scrollbar-thumb{background:rgba(160,205,230,.35);border-radius:4px}
+    #info-panel .close{position:absolute;top:16px;right:18px;background:none;border:none;
+      color:#7ba6c0;cursor:pointer;font-size:22px;line-height:1;padding:2px 6px;border-radius:6px}
+    #info-panel .close:hover{color:#fff;background:rgba(255,255,255,.12)}
+    #info-panel h2{font-size:24px;color:#ffffff;margin-bottom:5px;font-weight:600;padding-right:28px}
+    #info-panel .sub{font-size:12px;color:#8fb8d0;text-transform:uppercase;letter-spacing:1.2px;
+      margin-bottom:20px;font-weight:600}
+    .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+    .stat{background:rgba(255,255,255,.07);border-radius:10px;padding:12px}
+    .stat-lbl{font-size:10.5px;color:#89b3ca;text-transform:uppercase;letter-spacing:.8px;
+      margin-bottom:5px;font-weight:600}
+    .stat-val{font-size:16px;color:#ffffff;font-weight:600;line-height:1.3}
+    #panel-desc{font-size:15px;color:#d3e6f0;line-height:1.7;margin-bottom:20px}
+    .comp-title{font-size:11px;color:#89b3ca;text-transform:uppercase;letter-spacing:1.2px;
+      margin-bottom:12px;font-weight:700}
+    .comp-row{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+    .comp-lbl{width:150px;font-size:13px;color:#d3e6f0;flex-shrink:0}
+    .comp-bg{flex:1;height:8px;background:rgba(255,255,255,.12);border-radius:4px;overflow:hidden}
+    .comp-fill{height:100%;border-radius:4px}
+    .comp-pct{font-size:13px;color:#ffffff;width:36px;text-align:right;font-weight:600}
+
+    /* ── Sidebar ─────────────────────────────────────────────── */
+    #sidebar{position:fixed;left:22px;bottom:22px;width:224px;z-index:15;
+      display:flex;flex-direction:column;gap:12px;max-height:64vh;
+      background:rgba(9,42,61,.92);border:1px solid rgba(150,195,220,.28);
+      border-radius:14px;padding:16px;backdrop-filter:blur(8px);
+      box-shadow:0 6px 30px rgba(0,0,0,.4)}
+    #sidebar h3{font-size:11px;color:#89b3ca;text-transform:uppercase;letter-spacing:1.3px;
+      margin-bottom:10px;font-weight:700}
+    #obj-list{flex:1;overflow-y:auto;min-height:0;margin:-4px}
+    #obj-list::-webkit-scrollbar{width:6px}
+    #obj-list::-webkit-scrollbar-thumb{background:rgba(160,205,230,.35);border-radius:3px}
+    .grp{font-size:10px;color:#6f9db8;text-transform:uppercase;letter-spacing:1.1px;
+      margin:11px 4px 6px;font-weight:700}
+    .grp:first-child{margin-top:4px}
+    .obj-btn{display:flex;align-items:center;gap:10px;width:100%;background:none;border:none;
+      color:#d3e6f0;font-size:14px;text-align:left;padding:7px 8px;border-radius:8px;cursor:pointer;
+      font-family:inherit;transition:background .15s}
+    .obj-btn:hover{background:rgba(255,255,255,.14);color:#fff}
+    .obj-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;box-shadow:0 0 6px currentColor}
+
+    #hint{position:fixed;bottom:22px;right:22px;background:rgba(9,42,61,.9);
+      border:1px solid rgba(150,195,220,.25);border-radius:10px;padding:11px 16px;font-size:13px;
+      color:#8fb8d0;z-index:15;backdrop-filter:blur(6px)}
+    #hint b{color:#ffffff;font-weight:600}
+
+    @media (max-width:900px){
+      #info-panel{left:0;right:0;bottom:0;top:auto;transform:none;width:auto;
+        max-height:56vh;border-radius:16px 16px 0 0}
+      #sidebar{width:180px;max-height:48vh}
+      #hint{display:none}
+    }
+    @media (max-height:560px){#sidebar{display:none}}
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<div id="loading"><h2>Loading Explorer</h2><p>Preparing the outer solar system…</p></div>
+
+<div id="topbar">
+  <div id="title-bar">
+    <h1 id="view-title">Kuiper Belt</h1>
+    <p id="view-sub">The icy disk beyond Neptune · 30–55 AU</p>
+  </div>
+  <div id="modes">
+    <button class="mode-btn active" id="btn-kuiper" onclick="setMode('kuiper')">Kuiper Belt</button>
+    <button class="mode-btn" id="btn-oort" onclick="setMode('oort')">Oort Cloud</button>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<div id="info-panel">
+  <button class="close" onclick="closePanel()">✕</button>
+  <h2 id="p-title"></h2>
+  <div class="sub" id="p-sub"></div>
+  <div class="stat-grid" id="p-stats"></div>
+  <div id="panel-desc"></div>
+  <div id="p-comp"></div>
+</div>
+
+<div id="sidebar">
+  <div><h3 id="list-title">Jump to Object</h3></div>
+  <div id="obj-list"></div>
+</div>
+
+<div id="hint"><b>Scroll</b> zoom · <b>Drag</b> rotate · <b>Click</b> objects &amp; dust</div>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ─── Scale ───────────────────────────────────────────────────────────────────
+// Log scale, otherwise 100,000 AU and 1 AU cannot share a scene.
+function s(au){ return Math.log10(au+1)*40; }
+function unscale(d){ return Math.pow(10,d/40)-1; }
+
+// ─── Data ────────────────────────────────────────────────────────────────────
+const OBJECTS = [
+  { id:'pluto', name:'Pluto', type:'Dwarf Planet', color:0xd9b78a, size:0.95, region:'kuiper',
+    au:39.5, phi:0.8, inc:17.1, orbit:{a:39.5,e:.249,inc:17.1},
+    stats:{'Distance':'39.5 AU','Diameter':'2,374 km','Orbital period':'248 yrs','Discovered':'1930'},
+    desc:'Once the 9th planet, Pluto was reclassified as a dwarf planet in 2006. New Horizons revealed a vast heart-shaped nitrogen ice plain (Tombaugh Regio) and towering methane ice mountains. It has 5 moons; Charon is so large the two form a binary system.',
+    comp:[{l:'Nitrogen ice',p:55,c:'#8fa8ff'},{l:'Methane ice',p:25,c:'#5cb8ff'},{l:'Rock / silicates',p:15,c:'#c69a66'},{l:'Carbon monoxide',p:5,c:'#7ad4b4'}]
+  },
+  { id:'eris', name:'Eris', type:'Dwarf Planet · Scattered Disc', color:0xf0f0f5, size:0.92, region:'kuiper',
+    au:96, phi:3.5, inc:44.0, orbit:{a:67.7,e:.436,inc:44.0},
+    stats:{'Distance':'96 AU (current)','Diameter':'2,326 km','Orbital period':'559 yrs','Discovered':'2005'},
+    desc:'Eris\'s discovery in 2005 directly triggered the reclassification of Pluto. Though very slightly smaller than Pluto, Eris is 27% more massive. It spends most of its orbit in the scattered disc at high inclination. Its moon Dysnomia was the first found around a trans-Neptunian object after Charon.',
+    comp:[{l:'Methane ice',p:60,c:'#5cb8ff'},{l:'Rock / silicates',p:25,c:'#c69a66'},{l:'Nitrogen ice',p:10,c:'#8fa8ff'},{l:'Other ices',p:5,c:'#7ad4b4'}]
+  },
+  { id:'makemake', name:'Makemake', type:'Dwarf Planet', color:0xe89a72, size:0.8, region:'kuiper',
+    au:52.7, phi:5.0, inc:29.0, orbit:{a:45.8,e:.159,inc:29.0},
+    stats:{'Distance':'52.7 AU','Diameter':'1,434 km','Orbital period':'310 yrs','Discovered':'2005'},
+    desc:'Named after the creation deity of the Rapa Nui people of Easter Island, Makemake is the third-largest known dwarf planet in the Kuiper Belt. Its reddish color comes from frozen methane. A moon was discovered in 2016 (MK2), which is unusually dark.',
+    comp:[{l:'Methane ice',p:70,c:'#5cb8ff'},{l:'Ethane ice',p:15,c:'#9ad2ff'},{l:'Rock / silicates',p:12,c:'#c69a66'},{l:'Tholins',p:3,c:'#a2542f'}]
+  },
+  { id:'haumea', name:'Haumea', type:'Dwarf Planet', color:0xfafafa, size:0.8, region:'kuiper',
+    au:50.9, phi:2.3, inc:28.2, orbit:{a:43.3,e:.195,inc:28.2},
+    stats:{'Distance':'50.9 AU','Size':'1,920 × 996 km','Orbital period':'285 yrs','Rotation':'3.9 hours'},
+    desc:'Haumea is the most unusually shaped dwarf planet — its rapid 3.9-hour spin has flung it into a rugby-ball ellipsoid. It is the fastest-spinning large body in the solar system. It also has a ring system and two moons (Hi\'iaka and Namaka).',
+    comp:[{l:'Crystalline water ice',p:80,c:'#cfe8ff'},{l:'Rock / silicates',p:15,c:'#c69a66'},{l:'Carbon compounds',p:5,c:'#6a6a6a'}]
+  },
+  { id:'quaoar', name:'Quaoar', type:'Dwarf Planet Candidate', color:0x9fb0bd, size:0.95, region:'kuiper',
+    au:44.0, phi:4.2, inc:8.0, orbit:{a:43.4,e:.041,inc:8.0},
+    stats:{'Distance':'44.0 AU','Diameter':'~1,121 km','Orbital period':'286 yrs','Moon':'Weywot'},
+    desc:'Quaoar has a puzzling ring that lies outside its Roche limit — the zone where tidal forces would normally shred ring material. This challenges our understanding of ring formation. Its nearly circular orbit makes it one of the most stable Kuiper Belt objects.',
+    comp:[{l:'Water ice',p:50,c:'#cfe8ff'},{l:'Rock / silicates',p:35,c:'#c69a66'},{l:'Carbon compounds',p:15,c:'#6a6a6a'}]
+  },
+  { id:'sedna', name:'Sedna', type:'Extreme TNO · Inner Oort', color:0xff7448, size:0.75, region:'both',
+    au:84.5, phi:1.5, inc:11.9, orbit:{a:506,e:.843,inc:11.9},
+    stats:{'Distance':'84.5 AU (current)','Diameter':'~995 km','Orbital period':'~11,400 yrs','Aphelion':'~937 AU'},
+    desc:'Sedna has one of the most extreme orbits known — at aphelion it reaches ~937 AU, deep in the inner Oort Cloud, yet it never gets close enough to Neptune to have been scattered there. Some scientists propose a distant undiscovered planet or a past stellar flyby explains its orbit. Its deep red color is likely tholins — complex organic molecules.',
+    comp:[{l:'Water ice',p:40,c:'#cfe8ff'},{l:'Methane / nitrogen ice',p:30,c:'#5cb8ff'},{l:'Rock / silicates',p:20,c:'#c69a66'},{l:'Tholins (organic)',p:10,c:'#d2551f'}]
+  },
+  { id:'halley', name:"Halley's Comet", type:'Short-Period Comet · Kuiper origin', color:0xfff9b0, size:0.6, region:'kuiper',
+    au:35, phi:1.1, inc:162.3, orbit:{a:17.8,e:.967,inc:162.3},
+    stats:{'Distance':'~35 AU (2024)','Nucleus size':'15 × 8 km','Orbital period':'75.3 yrs','Next perihelion':'2061'},
+    desc:'The most famous comet in history, recorded since at least 240 BC. Halley travels in a retrograde (backward) direction on a highly elongated orbit. At perihelion it nearly skims the Sun; at aphelion it reaches 35 AU. Its last appearance was 1986, when the Giotto and Vega spacecraft flew through its coma.',
+    comp:[{l:'Water ice',p:80,c:'#cfe8ff'},{l:'Dust (silicate, carbon)',p:10,c:'#c69a66'},{l:'CO / CO₂ ice',p:7,c:'#7ad4b4'},{l:'Organic compounds',p:3,c:'#a2542f'}]
+  },
+  { id:'halebop', name:'Comet Hale-Bopp', type:'Long-Period Comet · Oort origin', color:0xfff9b0, size:0.6, region:'both',
+    au:47, phi:4.8, inc:89.4, orbit:{a:186,e:.995,inc:89.4},
+    stats:{'Distance':'~47 AU (2024)','Nucleus size':'~60 km','Orbital period':'~2,520 yrs','Last perihelion':'April 1997'},
+    desc:'One of the brightest comets visible from Earth in decades, Hale-Bopp remained naked-eye visible for 18 months in 1996–97, an unprecedented record. At ~60 km across it is about 3× larger than Halley\'s comet. It originated in the outer Oort Cloud before being perturbed inward.',
+    comp:[{l:'Water ice',p:75,c:'#cfe8ff'},{l:'Carbon monoxide',p:10,c:'#7ad4b4'},{l:'Dust / silicates',p:8,c:'#c69a66'},{l:'CO₂, HCN, other',p:7,c:'#96d296'}]
+  },
+];
+
+const REGIONS = {
+  kuiper:{ name:'Kuiper Belt', sub:'Trans-Neptunian Disk · 30–55 AU',
+    stats:{'Distance':'30–55 AU from Sun','Est. objects':'100,000+','Total mass':'~0.04 Earth masses','Shape':'Flat disk'},
+    desc:'The Kuiper Belt is a broad, flat disk of icy debris beyond Neptune — like the asteroid belt, but roughly 20 times wider and far more massive. It is left over from the protoplanetary disk that formed the planets, and it is the source of short-period comets. NASA\'s New Horizons flew through it after its Pluto encounter.',
+    comp:[{l:'Water ice',p:45,c:'#cfe8ff'},{l:'Rock / silicates',p:25,c:'#c69a66'},{l:'Methane ice',p:15,c:'#5cb8ff'},{l:'Carbon monoxide',p:10,c:'#7ad4b4'},{l:'Organic tholins',p:5,c:'#a2542f'}]
+  },
+  scattered:{ name:'Scattered Disc', sub:'Dynamically Active · 55–200 AU',
+    stats:{'Distance':'55–200 AU (variable)','Objects':'Thousands known','Largest body':'Eris','Origin':'Neptune scattering'},
+    desc:'The Scattered Disc holds objects gravitationally flung into steep, highly eccentric orbits by close encounters with Neptune as the giant planets migrated outward. It is the main reservoir of short-period comets. Orbits here are so elliptical that some objects cross Neptune\'s path.',
+    comp:[{l:'Water ice',p:50,c:'#cfe8ff'},{l:'Rock / silicates',p:20,c:'#c69a66'},{l:'Methane ice',p:20,c:'#5cb8ff'},{l:'Other volatiles',p:10,c:'#7ad4b4'}]
+  },
+  inner_oort:{ name:'Inner Oort Cloud', sub:'Hills Cloud · 2,000–20,000 AU',
+    stats:{'Distance':'2,000–20,000 AU','Shape':'Thick doughnut','Est. objects':'Billions','Light travel':'11 days – 3 months'},
+    desc:'The inner Oort Cloud, or Hills Cloud, is a thick doughnut-shaped region believed to hold most of the Oort Cloud\'s objects. It is flatter than the outer cloud, remembering the geometry of the original solar nebula. It is the source of Halley-type comets. It has never been directly observed.',
+    comp:[{l:'Water ice',p:70,c:'#cfe8ff'},{l:'Carbon monoxide',p:10,c:'#7ad4b4'},{l:'Rock / dust',p:10,c:'#c69a66'},{l:'Carbon dioxide',p:7,c:'#96d296'},{l:'Ammonia / methane',p:3,c:'#5cb8ff'}]
+  },
+  outer_oort:{ name:'Outer Oort Cloud', sub:'Spherical Shell · 20,000–100,000 AU',
+    stats:{'Distance':'20,000–100,000 AU','Shape':'Hollow sphere','Est. objects':'2 trillion+','Light travel':'3 months – 1.6 years'},
+    desc:'The Outer Oort Cloud is a vast, nearly spherical shell of icy bodies wrapped completely around the solar system in every direction. It is the source of long-period comets like Hale-Bopp. Gravitational nudges from passing stars and the Milky Way\'s tide can drop these objects inward over millions of years. Its outer edge may reach nearly 2 light-years.',
+    comp:[{l:'Water ice',p:75,c:'#cfe8ff'},{l:'Carbon monoxide',p:10,c:'#7ad4b4'},{l:'Carbon dioxide',p:8,c:'#96d296'},{l:'Rock / dust',p:5,c:'#c69a66'},{l:'Other volatiles',p:2,c:'#8ec48e'}]
+  },
+};
+
+// ─── Renderer / scene ────────────────────────────────────────────────────────
+const canvas=document.getElementById('canvas');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight,false);
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0c3348); // navy, as in the reference diagram
+
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.05,3000);
+camera.position.set(0,46,96);
+
+const controls=new OrbitControls(camera,canvas);
+controls.enableDamping=true;
+controls.dampingFactor=.06;
+controls.minDistance=3;
+controls.maxDistance=620;
+
+const clickables=[];   // solid meshes (bodies)
+const objMeshes={};
+const regionClouds=[]; // point clouds (dust regions)
+
+// ─── Soft round sprite texture ───────────────────────────────────────────────
+function makeCircleTex(size=64){
+  const c=document.createElement('canvas');c.width=c.height=size;
+  const ctx=c.getContext('2d');
+  const g=ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  g.addColorStop(0,'rgba(255,255,255,1)');
+  g.addColorStop(.45,'rgba(255,255,255,.65)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=g;ctx.fillRect(0,0,size,size);
+  return new THREE.CanvasTexture(c);
+}
+const circleTex=makeCircleTex();
+
+function makeGlowTex(size,col){
+  const c=document.createElement('canvas');c.width=c.height=size;
+  const ctx=c.getContext('2d');
+  const r=new THREE.Color(col),R=(r.r*255)|0,G=(r.g*255)|0,B=(r.b*255)|0;
+  const g=ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  g.addColorStop(0,`rgba(${R},${G},${B},1)`);
+  g.addColorStop(.35,`rgba(${R},${G},${B},.4)`);
+  g.addColorStop(1,`rgba(${R},${G},${B},0)`);
+  ctx.fillStyle=g;ctx.fillRect(0,0,size,size);
+  return new THREE.CanvasTexture(c);
+}
+
+// ─── Dust generator ──────────────────────────────────────────────────────────
+// `flatten` 0 = perfect sphere, 1 = paper-thin disk. Radii are sampled by
+// volume (r³) so a shell brightens toward its limb, exactly like the reference.
+function makeDust({count,minAu,maxAu,flatten,size,opacity,color=0xdfeaf2}){
+  const pos=new Float32Array(count*3),cols=new Float32Array(count*3);
+  const rMin=s(minAu),rMax=s(maxAu);
+  const base=new THREE.Color(color);
+  for(let i=0;i<count;i++){
+    const u=Math.random();
+    const r=Math.cbrt(rMin**3+u*(rMax**3-rMin**3));
+    const theta=Math.random()*Math.PI*2;
+    const cosPhi=(2*Math.random()-1)*(1-flatten)+((Math.random()-.5)*.1*flatten);
+    const phi=Math.acos(Math.max(-1,Math.min(1,cosPhi)));
+    const sp=Math.sin(phi);
+    pos[i*3]=r*sp*Math.cos(theta);
+    pos[i*3+1]=r*Math.cos(phi)*(1-flatten*.82);
+    pos[i*3+2]=r*sp*Math.sin(theta);
+    const br=.72+Math.random()*.28;
+    cols[i*3]=base.r*br;cols[i*3+1]=base.g*br;cols[i*3+2]=base.b*br;
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('color',new THREE.BufferAttribute(cols,3));
+  const mat=new THREE.PointsMaterial({size,map:circleTex,vertexColors:true,transparent:true,
+    alphaTest:.02,opacity,depthWrite:false,sizeAttenuation:true});
+  // Cap on-screen size, or particles near the camera balloon into blobs
+  mat.onBeforeCompile=sh=>{
+    sh.vertexShader=sh.vertexShader.replace(
+      'if ( isPerspective ) gl_PointSize *= ( scale / - mvPosition.z );',
+      'if ( isPerspective ) gl_PointSize *= ( scale / - mvPosition.z );\n\tgl_PointSize = min( gl_PointSize, 6.0 );'
+    );
+  };
+  return new THREE.Points(geo,mat);
+}
+
+function addDust(cfg,regionKey,group){
+  const pts=makeDust(cfg);
+  pts.userData={type:'region',data:REGIONS[regionKey]};
+  group.add(pts);
+  regionClouds.push(pts);
+  return pts;
+}
+
+// ─── Groups: the two structures stay visually separate ───────────────────────
+const sysGroup=new THREE.Group();   // Sun, planets, orbits — shown in both modes
+const kuiperGroup=new THREE.Group();// Kuiper belt + scattered disc dust
+const oortGroup=new THREE.Group();  // Inner + outer Oort shells
+scene.add(sysGroup,kuiperGroup,oortGroup);
+
+// ─── Sun ─────────────────────────────────────────────────────────────────────
+{
+  const sun=new THREE.Mesh(new THREE.SphereGeometry(2.6,32,32),
+    new THREE.MeshBasicMaterial({color:0xffd23f}));
+  sun.userData={type:'object',data:{
+    name:'The Sun',type:'G-type Main-Sequence Star',
+    stats:{'Distance':'0 AU','Diameter':'1,392,000 km','Mass':'99.86% of system','Surface temp':'5,778 K'},
+    desc:'The Sun holds everything here in orbit — the planets, the Kuiper Belt, and even Oort Cloud objects a hundred thousand times farther out than Earth. Its gravitational reach extends roughly a quarter of the way to the nearest star.',
+    comp:[{l:'Hydrogen',p:73,c:'#a8c8ff'},{l:'Helium',p:25,c:'#ffcf6b'},{l:'Oxygen',p:1,c:'#96ec96'},{l:'Other',p:1,c:'#b4b4b4'}]
+  }};
+  sysGroup.add(sun);
+  clickables.push(sun);
+  const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:makeGlowTex(256,0xffd23f),
+    blending:THREE.AdditiveBlending,transparent:true,opacity:.85,depthWrite:false}));
+  glow.scale.setScalar(17);
+  sun.add(glow);
+}
+
+// ─── Planets + orbit rings ───────────────────────────────────────────────────
+const PLANETS=[
+  {name:'Mercury',au:.39,color:0xb9a898,r:.55,ang:0.6},
+  {name:'Venus',  au:.72,color:0xf0c169,r:.8, ang:2.3},
+  {name:'Earth',  au:1,   color:0x4d94e8,r:.85,ang:4.1},
+  {name:'Mars',   au:1.52,color:0xd9502e,r:.7, ang:5.5},
+  {name:'Jupiter',au:5.2, color:0xd9a976,r:1.7,ang:1.4},
+  {name:'Saturn', au:9.5, color:0xecd07a,r:1.5,ang:3.6},
+  {name:'Uranus', au:19.2,color:0x8fdce8,r:1.2,ang:5.9},
+  {name:'Neptune',au:30.1,color:0x3a6fe0,r:1.2,ang:0.9},
+];
+PLANETS.forEach(p=>{
+  const r=s(p.au);
+  const ring=new THREE.Mesh(new THREE.RingGeometry(r-.09,r+.09,180),
+    new THREE.MeshBasicMaterial({color:0x9fc6dc,side:THREE.DoubleSide,transparent:true,opacity:.42}));
+  ring.rotation.x=-Math.PI/2;
+  sysGroup.add(ring);
+
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(p.r,20,20),
+    new THREE.MeshBasicMaterial({color:p.color}));
+  mesh.position.set(r*Math.cos(p.ang),0,r*Math.sin(p.ang));
+  sysGroup.add(mesh);
+
+  if(p.name==='Saturn'){
+    const sr=new THREE.Mesh(new THREE.RingGeometry(p.r*1.5,p.r*2.3,48),
+      new THREE.MeshBasicMaterial({color:0xe8d59a,side:THREE.DoubleSide,transparent:true,opacity:.75}));
+    sr.rotation.x=-Math.PI/2.4;
+    mesh.add(sr);
+  }
+});
+
+// ─── Kuiper Belt & Scattered Disc dust ───────────────────────────────────────
+addDust({count:26000,minAu:30,maxAu:55,flatten:.88,size:1.15,opacity:.95},'kuiper',kuiperGroup);
+addDust({count:9000, minAu:55,maxAu:200,flatten:.72,size:1.1, opacity:.55},'scattered',kuiperGroup);
+
+// ─── Oort Cloud shells ───────────────────────────────────────────────────────
+addDust({count:26000,minAu:2000, maxAu:20000, flatten:.45,size:1.5,opacity:.8},'inner_oort',oortGroup);
+addDust({count:52000,minAu:20000,maxAu:100000,flatten:0,  size:1.6,opacity:.62},'outer_oort',oortGroup);
+
+// ─── Orbit ellipses for the named bodies ─────────────────────────────────────
+function makeOrbit(a,e,incDeg,color,opacity){
+  const inc=incDeg*Math.PI/180;
+  const b=a*Math.sqrt(1-e*e);
+  const aS=s(a),bS=aS*(b/a),cS=aS*e;
+  const pts=[];
+  for(let i=0;i<=320;i++){
+    const t=(i/320)*Math.PI*2;
+    const xo=aS*Math.cos(t)-cS, yo=bS*Math.sin(t);
+    pts.push(new THREE.Vector3(xo,yo*Math.sin(inc),yo*Math.cos(inc)));
+  }
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color,transparent:true,opacity}));
+}
+
+OBJECTS.forEach(obj=>{
+  const grp = obj.region==='both' ? sysGroup : kuiperGroup;
+  grp.add(makeOrbit(obj.orbit.a,obj.orbit.e,obj.orbit.inc,0xa8cfe6,.3));
+
+  const r=s(obj.au),inc=obj.inc*Math.PI/180*.3;
+  const mesh=new THREE.Mesh(new THREE.SphereGeometry(obj.size,20,20),
+    new THREE.MeshBasicMaterial({color:obj.color}));
+  mesh.position.set(r*Math.cos(obj.phi)*Math.cos(inc),r*Math.sin(inc),r*Math.sin(obj.phi)*Math.cos(inc));
+  mesh.userData={type:'object',data:obj};
+  grp.add(mesh);
+  objMeshes[obj.id]=mesh;
+
+  const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:makeGlowTex(64,obj.color),
+    blending:THREE.AdditiveBlending,transparent:true,opacity:.6,depthWrite:false}));
+  glow.scale.setScalar(obj.size*4);
+  mesh.add(glow);
+
+  // Bodies render only a few pixels wide and drift, so raycast a bigger
+  // invisible sphere parented to the mesh instead of the mesh itself.
+  const hit=new THREE.Mesh(new THREE.SphereGeometry(3.2,10,10),
+    new THREE.MeshBasicMaterial({visible:false}));
+  hit.userData=mesh.userData;
+  mesh.add(hit);
+  clickables.push(hit);
+});
+
+// ─── Raycasting ──────────────────────────────────────────────────────────────
+const raycaster=new THREE.Raycaster();
+const mouse=new THREE.Vector2();
+const tooltip=document.getElementById('tooltip');
+
+function visible(o){ let n=o; while(n){ if(!n.visible)return false; n=n.parent; } return true; }
+
+function getIntersect(e){
+  const x=e.clientX??0, y=e.clientY??0;
+  mouse.x=(x/innerWidth)*2-1;
+  mouse.y=-(y/innerHeight)*2+1;
+  raycaster.setFromCamera(mouse,camera);
+  // Named bodies win over dust so an object inside the belt stays selectable
+  const objHits=raycaster.intersectObjects(clickables.filter(visible),false);
+  if(objHits.length)return objHits[0];
+  raycaster.params.Points.threshold=Math.max(.8,camera.position.length()*.01);
+  const regHits=raycaster.intersectObjects(regionClouds.filter(visible),false);
+  return regHits.length?regHits[0]:null;
+}
+
+let hoverPending=false;
+canvas.addEventListener('mousemove',e=>{
+  if(hoverPending)return;             // throttle to one test per frame
+  hoverPending=true;
+  requestAnimationFrame(()=>{
+    hoverPending=false;
+    const hit=getIntersect(e);
+    if(hit){
+      tooltip.textContent=hit.object.userData.data.name;
+      tooltip.style.display='block';
+      tooltip.style.left=(e.clientX+16)+'px';
+      tooltip.style.top=(e.clientY-12)+'px';
+      canvas.style.cursor='pointer';
+    } else {
+      tooltip.style.display='none';
+      canvas.style.cursor='default';
+    }
+  });
+});
+
+// Orbiting ends in a click event, so only count it if the pointer barely moved
+let downAt=null;
+canvas.addEventListener('pointerdown',e=>{downAt={x:e.clientX,y:e.clientY};});
+canvas.addEventListener('click',e=>{
+  if(downAt&&Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)>5)return;
+  const hit=getIntersect(e);
+  if(hit)openPanel(hit.object.userData);
+});
+
+// ─── Info panel ──────────────────────────────────────────────────────────────
+function openPanel(ud){
+  const d=ud.data;
+  document.getElementById('p-title').textContent=d.name;
+  document.getElementById('p-sub').textContent=d.type||d.sub||'';
+  document.getElementById('p-stats').innerHTML=
+    Object.entries(d.stats||{}).map(([k,v])=>
+      `<div class="stat"><div class="stat-lbl">${k}</div><div class="stat-val">${v}</div></div>`).join('');
+  document.getElementById('panel-desc').textContent=d.desc||'';
+  document.getElementById('p-comp').innerHTML=(d.comp&&d.comp.length)
+    ? '<div class="comp-title">What it is made of</div>'+d.comp.map(c=>
+        `<div class="comp-row"><div class="comp-lbl">${c.l}</div>`+
+        `<div class="comp-bg"><div class="comp-fill" style="width:${c.p}%;background:${c.c}"></div></div>`+
+        `<div class="comp-pct">${c.p}%</div></div>`).join('')
+    : '';
+  document.getElementById('info-panel').style.display='block';
+}
+window.closePanel=()=>{document.getElementById('info-panel').style.display='none';};
+
+// ─── Camera flight ───────────────────────────────────────────────────────────
+let flyStart=null,flyFrom,flyTo_,flyFromT,flyToT;
+const FLY_MS=1500;
+function flyToVec(pos,tgt){
+  flyStart=performance.now();
+  flyFrom=camera.position.clone(); flyFromT=controls.target.clone();
+  flyTo_=pos.clone();              flyToT=tgt.clone();
+}
+const easeInOut=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+
+window.focusObject=function(id){
+  const m=objMeshes[id]; if(!m||!visible(m))return;
+  const p=m.getWorldPosition(new THREE.Vector3());
+  const back=Math.max(9,p.length()*.2);
+  flyToVec(p.clone().add(p.clone().normalize().multiplyScalar(back)).add(new THREE.Vector3(0,back*.5,0)),p);
+  openPanel(m.userData);
+};
+
+// ─── Modes: Kuiper Belt and Oort Cloud are shown separately ──────────────────
+const MODES={
+  kuiper:{ title:'Kuiper Belt', sub:'The icy disk beyond Neptune · 30–55 AU',
+           cam:new THREE.Vector3(0,64,142), min:3,  max:210 }, // far enough to frame the whole ring
+  oort:  { title:'Oort Cloud',  sub:'A shell wrapped around the entire solar system · 2,000–100,000 AU',
+           cam:new THREE.Vector3(0,120,330), min:60, max:620 },
+};
+let mode='kuiper';
+
+window.setMode=function(m){
+  mode=m;
+  const cfg=MODES[m];
+  oortGroup.visible   = (m==='oort');
+  // The belt stays on in Oort mode: seeing it shrink to a speck at the centre
+  // of the shell is the whole point of the scale comparison.
+  kuiperGroup.visible = true;
+  controls.minDistance=cfg.min;
+  controls.maxDistance=cfg.max;
+  document.getElementById('view-title').textContent=cfg.title;
+  document.getElementById('view-sub').textContent=cfg.sub;
+  document.getElementById('btn-kuiper').classList.toggle('active',m==='kuiper');
+  document.getElementById('btn-oort').classList.toggle('active',m==='oort');
+  flyToVec(cfg.cam,new THREE.Vector3(0,0,0));
+  closePanel();
+  buildList();
+};
+
+// ─── Sidebar list, filtered to the active mode ───────────────────────────────
+const hex=c=>'#'+c.toString(16).padStart(6,'0');
+function buildList(){
+  const inMode=o=>o.region==='both'||o.region===mode||(mode==='kuiper'&&o.region==='kuiper');
+  const bodies=OBJECTS.filter(inMode);
+  const dwarfs=bodies.filter(o=>!o.id.startsWith('hal'));
+  const comets=bodies.filter(o=>o.id.startsWith('hal'));
+  const regionKeys = mode==='kuiper' ? ['kuiper','scattered'] : ['inner_oort','outer_oort'];
+
+  let html='<div class="grp">Regions — click for composition</div>';
+  regionKeys.forEach(k=>{
+    html+=`<button class="obj-btn" data-region="${k}">`+
+          `<span class="obj-dot" style="background:#dfeaf2"></span>${REGIONS[k].name}</button>`;
+  });
+  if(dwarfs.length){
+    html+='<div class="grp">Dwarf Planets</div>';
+    dwarfs.forEach(o=>{html+=`<button class="obj-btn" data-id="${o.id}">`+
+      `<span class="obj-dot" style="background:${hex(o.color)}"></span>${o.name}</button>`;});
+  }
+  if(comets.length){
+    html+='<div class="grp">Comets</div>';
+    comets.forEach(o=>{html+=`<button class="obj-btn" data-id="${o.id}">`+
+      `<span class="obj-dot" style="background:${hex(o.color)}"></span>${o.name}</button>`;});
+  }
+  document.getElementById('obj-list').innerHTML=html;
+}
+document.getElementById('obj-list').addEventListener('click',e=>{
+  const b=e.target.closest('.obj-btn'); if(!b)return;
+  if(b.dataset.region)openPanel({data:REGIONS[b.dataset.region]});
+  else focusObject(b.dataset.id);
+});
+
+// ─── Resize (per-frame; resize events don't fire inside embedded panes) ──────
+function syncSize(){
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  if(!w||!h)return;
+  const dpr=Math.min(devicePixelRatio,2);
+  if(canvas.width!==Math.floor(w*dpr)||canvas.height!==Math.floor(h*dpr)){
+    renderer.setSize(w,h,false);
+    camera.aspect=w/h; camera.updateProjectionMatrix();
+  }
+}
+
+// ─── Animate ─────────────────────────────────────────────────────────────────
+function animate(now){
+  requestAnimationFrame(animate);
+  syncSize();
+
+  if(flyStart!==null){
+    const t=Math.min((now-flyStart)/FLY_MS,1),e=easeInOut(t);
+    camera.position.lerpVectors(flyFrom,flyTo_,e);
+    controls.target.lerpVectors(flyFromT,flyToT,e);
+    if(t>=1)flyStart=null;
+  }
+
+  // Slow drift keeps the scene alive without making bodies hard to click
+  OBJECTS.forEach((obj,i)=>{
+    const m=objMeshes[obj.id]; if(!m)return;
+    const r=s(obj.au),inc=obj.inc*Math.PI/180*.3;
+    const a=obj.phi+now*(.0002+i*.00003)*.012;
+    m.position.set(r*Math.cos(a)*Math.cos(inc),r*Math.sin(inc),r*Math.sin(a)*Math.cos(inc));
+  });
+
+  controls.update();
+  renderer.render(scene,camera);
+}
+
+// #oort / #kuiper opens straight into that view
+const startMode = location.hash.slice(1)==='oort' ? 'oort' : 'kuiper';
+setMode(startMode);
+flyStart=null;                       // land on the view directly, no intro flight
+camera.position.copy(MODES[startMode].cam);
+
+const loadEl=document.getElementById('loading');
+loadEl.style.opacity='0';
+setTimeout(()=>loadEl.style.display='none',700);
+
+animate(performance.now());
+</script>
+</body>
+</html>
