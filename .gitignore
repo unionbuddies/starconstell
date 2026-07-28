@@ -3,3 +3,6 @@
 
 # Local, machine-specific Claude Code settings
 .claude/settings.local.json
+
+# Sub-project with its own git repository
+oortkuiper/
