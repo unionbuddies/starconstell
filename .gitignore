@@ -4,5 +4,6 @@
 # Local, machine-specific Claude Code settings
 .claude/settings.local.json
 
-# Sub-project with its own git repository
+# Sub-projects with their own git repositories
 oortkuiper/
+jupgreatredspot/

@@ -1,0 +1,57 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-deep: #050510;
+  --bg-panel: rgba(8, 8, 24, 0.85);
+  --bg-panel-solid: #0a0a1e;
+  --border-subtle: rgba(100, 120, 180, 0.12);
+  --border-hover: rgba(100, 140, 220, 0.25);
+  --text-primary: rgba(230, 238, 255, 1);
+  --text-secondary: rgba(180, 195, 225, 0.85);
+  --text-dim: rgba(140, 155, 190, 0.65);
+  --accent: rgba(100, 160, 255, 0.9);
+  --accent-glow: rgba(80, 140, 255, 0.15);
+  --glass-bg: rgba(15, 15, 40, 0.7);
+  --glass-border: rgba(100, 120, 180, 0.15);
+  --gold: #ffd700;
+  --scrollbar-track: rgba(15, 15, 40, 0.5);
+  --scrollbar-thumb: rgba(100, 120, 180, 0.2);
+
+  font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: var(--bg-deep);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg-deep);
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 120, 180, 0.35);
+}
