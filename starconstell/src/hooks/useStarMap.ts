@@ -34,7 +34,7 @@ const DEFAULT_VIEW: ViewState = {
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 8;
 
-export function useStarMap(constellations: Constellation[]): UseStarMapReturn {
+export function useStarMap(_constellations: Constellation[]): UseStarMapReturn {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [viewState, setViewState] = useState<ViewState>(DEFAULT_VIEW);
   const [hoveredConstellation, setHoveredConstellation] = useState<Constellation | null>(null);
